@@ -1,0 +1,22 @@
+[mysqld]
+host_cache_size                = 0
+innodb_lock_wait_timeout       = 300
+innodb_buffer_pool_size        = 512M
+innodb_redo_log_capacity       = 512M
+innodb_strict_mode             = 0
+sql_mode                       = TRADITIONAL
+default_storage_engine         = INNODB
+max_allowed_packet             = 1G
+character-set-server           = utf8mb3
+collation-server               = utf8mb3_bin
+init-connect                   = 'SET NAMES utf8mb3'
+
+[mysqldump]
+max_allowed_packet             = 1G
+default-character-set          = utf8mb3
+
+[client]
+default-character-set          = utf8mb3
+
+[mysql]
+default-character-set          = utf8mb3

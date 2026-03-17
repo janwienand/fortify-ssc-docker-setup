@@ -1,0 +1,57 @@
+services:
+
+  ssc-mysql:
+    container_name: ssc-mysql
+    image: ${MYSQL_IMAGE:-docker.io/mysql:8.0}
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ssc}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-fortify}
+      MYSQL_USER: ${MYSQL_USER:-fortify}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-fortify}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - ./ssc-mysql/data:/var/lib/mysql
+      - ./ssc-mysql/config/config-file.cnf:/etc/mysql/conf.d/config-file.cnf:ro
+    logging:
+      options:
+        max-size: "1m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-fortify}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - fortify
+
+  ssc-webapp:
+    container_name: ssc-webapp
+    image: ${SSC_IMAGE:-fortifydocker/ssc-webapp:25.4.0.0137}
+    restart: always
+    ports:
+      - "${SSC_HTTPS_PORT:-8443}:8443"
+    volumes:
+      - ./ssc-webapp/secrets:/app/secrets:ro
+      - ./ssc-webapp/data:/fortify
+    tmpfs:
+      - /etc/ssc-tmp:size=1m
+      - /tmp:size=1m
+    environment:
+      HTTP_SERVER_CERTIFICATE_KEYSTORE_FILE: /app/secrets/ssc-keystore.pfx
+      HTTP_SERVER_CERTIFICATE_KEYSTORE_PASSWORD_FILE: /app/secrets/keystore_password
+      HTTP_SERVER_CERTIFICATE_KEY_PASSWORD_FILE: /app/secrets/keystore_password
+      HTTP_SERVER_CERTIFICATE_VERIFICATION: "none"
+      COM_FORTIFY_SSC_LICENSEPATH: /app/secrets/fortify.license
+      COM_FORTIFY_SSC_AUTOCONFIGPATH: /app/secrets/ssc.autoconfig
+    depends_on:
+      ssc-mysql:
+        condition: service_healthy
+    networks:
+      - fortify
+
+networks:
+  fortify:
+    driver: bridge

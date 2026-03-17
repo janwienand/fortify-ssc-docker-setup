@@ -1,0 +1,25 @@
+# Secrets & Lizenzen
+*.license
+*.key
+*.pfx
+*.jks
+*.pem
+keystore_password
+truststore_password
+secret.key
+ssc.autoconfig
+
+# Umgebungsvariablen
+.env
+
+# Daten-Volumes
+ssc-webapp/data/
+ssc-mysql/data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
