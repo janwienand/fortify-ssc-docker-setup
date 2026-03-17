@@ -27,9 +27,9 @@ echo "=============================================="
 echo ""
 
 # -------------------------------------------------------
-# 1. Voraussetzungen pruefen
+# 1. Voraussetzungen prüfen
 # -------------------------------------------------------
-info "Pruefe Voraussetzungen..."
+info "Prüfe Voraussetzungen..."
 
 if ! command -v docker &>/dev/null; then
     error "Docker ist nicht installiert. Bitte installiere Docker Desktop: https://docs.docker.com/get-docker/"
@@ -38,7 +38,7 @@ fi
 ok "Docker gefunden: $(docker --version)"
 
 if ! docker compose version &>/dev/null 2>&1; then
-    error "Docker Compose ist nicht verfuegbar. Bitte stelle sicher, dass Docker Desktop aktuell ist."
+    error "Docker Compose ist nicht verfügbar. Bitte stelle sicher, dass Docker Desktop aktuell ist."
     exit 1
 fi
 ok "Docker Compose gefunden: $(docker compose version --short)"
@@ -61,7 +61,7 @@ else
 fi
 
 # -------------------------------------------------------
-# 3. Lizenz pruefen
+# 3. Lizenz prüfen
 # -------------------------------------------------------
 echo ""
 if [ ! -f "${SECRETS_DIR}/fortify.license" ]; then
@@ -70,7 +70,7 @@ if [ ! -f "${SECRETS_DIR}/fortify.license" ]; then
     echo "  Bitte kopiere deine Fortify-Lizenz nach:"
     echo "  ${SECRETS_DIR}/fortify.license"
     echo ""
-    read -rp "  Druecke ENTER wenn die Datei bereitliegt..."
+    read -rp "  Drücke ENTER wenn die Datei bereitliegt..."
 
     if [ ! -f "${SECRETS_DIR}/fortify.license" ]; then
         error "fortify.license nicht gefunden. Abbruch."
@@ -86,7 +86,7 @@ echo ""
 if [ ! -f "${SECRETS_DIR}/ssc-keystore.pfx" ]; then
     info "Generiere selbstsigniertes SSL-Zertifikat..."
 
-    # Zufaelliges Keystore-Passwort erzeugen
+    # Zufälliges Keystore-Passwort erzeugen
     KEYSTORE_PW=$(openssl rand -base64 16)
     echo -n "${KEYSTORE_PW}" > "${SECRETS_DIR}/keystore_password"
 
@@ -103,7 +103,7 @@ if [ ! -f "${SECRETS_DIR}/ssc-keystore.pfx" ]; then
         -ext "SAN=dns:localhost,ip:127.0.0.1" \
         2>/dev/null
 
-    ok "SSL-Zertifikat erstellt (gueltig fuer 365 Tage)"
+    ok "SSL-Zertifikat erstellt (gültig für 365 Tage)"
 else
     ok "SSL-Zertifikat existiert bereits"
 fi
@@ -133,22 +133,22 @@ mkdir -p "${DATA_DIR_SSC}" "${DATA_DIR_MYSQL}"
 ok "Daten-Verzeichnisse erstellt"
 
 # -------------------------------------------------------
-# 7. Docker Hub Login
+# 7. Docker Hub Login prüfen
 # -------------------------------------------------------
 echo ""
-info "Pruefe Docker Hub Zugang..."
+info "Prüfe Docker Hub Zugang..."
 if docker pull --quiet "${SSC_IMAGE:-fortifydocker/ssc-webapp:25.4.0.0137}" &>/dev/null 2>&1; then
-    ok "SSC Image verfuegbar"
+    ok "SSC Image verfügbar"
 else
     warn "SSC Image konnte nicht gepullt werden."
     echo ""
-    echo "  Du benoetigst Zugang zum fortifydocker Docker Hub Repository."
-    echo "  Falls noch nicht geschehen:"
-    echo "  1. Erstelle einen Docker Hub Account: https://hub.docker.com"
-    echo "  2. Beantrage Zugang: mfi-fortifydocker@opentext.com"
-    echo "  3. Fuehre aus: docker login"
+    echo "  Das SSC Image ist nicht öffentlich verfügbar."
+    echo "  Stelle sicher, dass du bei Docker Hub angemeldet bist"
+    echo "  und Zugang zum fortifydocker-Repository hast."
     echo ""
-    read -rp "  Druecke ENTER um fortzufahren (oder Ctrl+C zum Abbrechen)..."
+    echo "  Führe aus: docker login"
+    echo ""
+    read -rp "  Drücke ENTER um fortzufahren (oder Ctrl+C zum Abbrechen)..."
 fi
 
 # -------------------------------------------------------
@@ -168,7 +168,7 @@ if [[ "${START}" =~ ^[jJyY]$ ]]; then
     echo "  (Der erste Start kann 2-5 Minuten dauern)"
     echo ""
     echo "  Standard-Login:  admin / admin"
-    echo "  (Muss beim ersten Login geaendert werden)"
+    echo "  (Muss beim ersten Login geändert werden)"
     echo ""
     echo "  Logs anzeigen:   docker compose logs -f"
     echo "  Stoppen:         docker compose down"
@@ -177,7 +177,7 @@ else
     echo ""
     ok "Setup abgeschlossen!"
     echo ""
-    echo "  Starte die Container spaeter mit:"
+    echo "  Starte die Container später mit:"
     echo "    cd ${SCRIPT_DIR}"
     echo "    docker compose up -d"
     echo ""
