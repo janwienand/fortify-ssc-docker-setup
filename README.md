@@ -1,120 +1,88 @@
 # Fortify Software Security Center (SSC) - Docker Setup
 
-Dieses Repository ermöglicht eine schnelle Installation des **Fortify Software Security Center (SSC) 25.4** mit Docker.
-Ideal für Evaluierung, Demos und Proof-of-Concept-Umgebungen.
+Docker-basiertes Setup für **Fortify SSC 25.4** – ideal für Evaluierung und Proof of Concept.
 
-> **Hinweis:** Dieses Setup ist für Test- und Evaluierungszwecke gedacht, nicht für den Produktionsbetrieb.
-
-## Architektur
-
-```
-                    +-------------------+
-                    |    Browser        |
-                    |  (HTTPS :8443)    |
-                    +--------+----------+
-                             |
-                    +--------v----------+
-                    |   SSC Webapp      |
-                    |   (Tomcat/8443)   |
-                    +--------+----------+
-                             |
-                    +--------v----------+
-                    |   MySQL 8.0       |
-                    |   (Port 3306)     |
-                    +-------------------+
-```
+> **Hinweis:** Nicht für den Produktionsbetrieb gedacht. Für Produktionsumgebungen siehe die [offizielle Kubernetes-Deployment-Dokumentation](https://www.microfocus.com/documentation/fortify-software-security-center/2540/Deploying_SSC_in_Kubernetes_25.4.0.html).
 
 ## Voraussetzungen
 
-| Software         | Version       | Hinweis                                  |
-|------------------|---------------|------------------------------------------|
-| Docker Desktop   | 24.0+         | [Download](https://docs.docker.com/get-docker/) |
-| Docker Compose   | v2            | In Docker Desktop enthalten              |
-| Java (keytool)   | JDK 17+       | Nur für SSL-Zertifikatserstellung        |
-| Fortify-Lizenz   | 25.x          | Von OpenText erhalten                    |
-| Docker Hub Login | -             | Zugang zu `fortifydocker` erforderlich (nicht öffentlich) |
+| Software         | Version | Hinweis                                              |
+|------------------|---------|------------------------------------------------------|
+| Docker Desktop   | 24.0+   | [Download](https://docs.docker.com/get-docker/)      |
+| Java (keytool)   | JDK 17+ | Für SSL-Zertifikatserstellung                        |
+| Fortify-Lizenz   | 25.x    | Von OpenText erhalten                                |
+| Docker Hub Login | –       | Zugang zu `fortifydocker` erforderlich (nicht öffentlich) |
 
-> **Hinweis:** Das SSC Docker Image (`fortifydocker/ssc-webapp`) ist nicht öffentlich verfügbar.
-> Du benötigst einen Docker Hub Account mit Zugang zum `fortifydocker`-Repository.
-> Stelle sicher, dass du vor der Installation `docker login` ausführst.
-
-## Schnellstart (Automatisch)
+## Schnellstart
 
 ```bash
-# 1. Repository klonen
 git clone https://github.com/janwienand/fortify-ssc-docker-setup.git
 cd fortify-ssc-docker-setup
 
-# 2. Fortify-Lizenz bereitstellen
+# Lizenz bereitstellen
 cp /pfad/zu/deiner/fortify.license ssc-webapp/secrets/fortify.license
 
-# 3. Setup ausführen
+# Setup ausführen
 ./setup.sh
 ```
 
-Das Setup-Script:
-- Prüft alle Voraussetzungen (Docker, Compose, keytool)
-- Erstellt die `.env` Konfiguration
-- Generiert ein selbstsigniertes SSL-Zertifikat
-- Erstellt die Datenbank-Konfiguration
-- Startet alle Container
+## Manuelle Installation
 
-## Manuelle Installation (Schritt für Schritt)
-
-### 1. Repository klonen
-
-```bash
-git clone https://github.com/janwienand/fortify-ssc-docker-setup.git
-cd fortify-ssc-docker-setup
-```
-
-### 2. Umgebungsvariablen konfigurieren
-
-```bash
-cp .env.example .env
-```
-
-Passe bei Bedarf die Werte in `.env` an (Ports, Passwörter etc.).
-
-### 3. Fortify-Lizenz bereitstellen
-
-Kopiere deine Fortify-Lizenzdatei:
+### 1. Lizenz bereitstellen
 
 ```bash
 cp /pfad/zu/deiner/fortify.license ssc-webapp/secrets/fortify.license
 ```
 
-### 4. SSL-Zertifikat erstellen
+### 2. HTTP-Zertifikat erstellen
 
-Generiere ein selbstsigniertes Zertifikat für den SSC-Webserver:
+Keystore-Passwort generieren:
 
 ```bash
-# Passwort generieren
-openssl rand -base64 16 > ssc-webapp/secrets/keystore_password
+KEYSTORE_PW="$(openssl rand -base64 32)"
+echo -n "$KEYSTORE_PW" > ssc-webapp/secrets/keystore_password
+```
 
-# Keystore erstellen
-keytool -genkeypair \
-  -alias ssc \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 365 \
+Keystore mit selbstsigniertem Zertifikat erstellen:
+
+```bash
+keytool -genkeypair -keyalg RSA -keysize 2048 \
   -storetype PKCS12 \
   -keystore ssc-webapp/secrets/ssc-keystore.pfx \
-  -storepass "$(cat ssc-webapp/secrets/keystore_password)" \
-  -keypass "$(cat ssc-webapp/secrets/keystore_password)" \
-  -dname "CN=localhost, OU=Fortify, O=Demo, L=Berlin, ST=Berlin, C=DE" \
+  -alias ssc-server \
+  -validity 365 \
+  -storepass "$KEYSTORE_PW" \
+  -keypass "$KEYSTORE_PW" \
+  -dname "CN=localhost, OU=Fortify, O=Demo, C=DE" \
   -ext "SAN=dns:localhost,ip:127.0.0.1"
 ```
 
-### 5. SSC Autoconfig erstellen
+### 3. SSC Autoconfig erstellen
 
 ```bash
 cp ssc-webapp/secrets/ssc.autoconfig.example ssc-webapp/secrets/ssc.autoconfig
 ```
 
-Passe bei Bedarf die `host.url` in `ssc.autoconfig` an (Standard: `https://localhost:8443`).
+Passe bei Bedarf `host.url` in der Datei an (Standard: `https://localhost:8443`).
 
-### 6. Bei Docker Hub anmelden
+### 4. Umgebungsvariablen konfigurieren
+
+```bash
+cp .env.example .env
+```
+
+### 5. Berechtigungen setzen
+
+Der SSC-Container läuft als User mit UID `1111`. Die Volumes müssen entsprechend beschreibbar sein:
+
+```bash
+mkdir -p ssc-webapp/data ssc-mysql/data
+chown -R 1111 ssc-webapp/data ssc-webapp/secrets
+```
+
+> **Hinweis:** Unter macOS/Docker Desktop ist dieser Schritt in der Regel nicht erforderlich.
+
+### 6. Docker Hub Login
 
 ```bash
 docker login
@@ -124,113 +92,92 @@ docker login
 
 ```bash
 docker compose up -d
-```
-
-### 8. Installation prüfen
-
-```bash
-# Logs verfolgen
 docker compose logs -f
-
-# Warten bis SSC bereit ist (kann 2-5 Minuten dauern)
-# Erfolgsmeldung: "Server startup in [xxx] milliseconds"
 ```
 
-### 9. SSC aufrufen
+Der erste Start kann 2–5 Minuten dauern. SSC ist bereit, wenn folgende Meldung erscheint:
 
-Öffne im Browser: **https://localhost:8443**
+```
+Server startup in [xxx] milliseconds
+```
 
-> Der Browser zeigt eine Zertifikatswarnung, da ein selbstsigniertes Zertifikat verwendet wird.
-> Das ist für eine Testumgebung normal – einfach fortfahren.
+### 8. SSC aufrufen
+
+Öffne **https://localhost:8443** im Browser.
+
+> Zertifikatswarnung ist bei selbstsignierten Zertifikaten normal – einfach fortfahren.
 
 **Standard-Login:** `admin` / `admin` (muss beim ersten Login geändert werden)
 
+### 9. Secret Key sichern
+
+Nach dem ersten erfolgreichen Start generiert SSC einen Verschlüsselungs-Key.
+Diesen für zukünftige Neustarts sichern:
+
+```bash
+docker cp ssc-webapp:/fortify/ssc/conf/secret.key ssc-webapp/secrets/secret.key
+```
+
+Anschließend in `.env` die folgende Zeile einkommentieren:
+
+```
+COM_FORTIFY_SSC_SECRETKEY=/app/secrets/secret.key
+```
+
 ## Nützliche Befehle
 
-| Befehl                          | Beschreibung                    |
-|---------------------------------|---------------------------------|
-| `docker compose up -d`          | Container starten               |
-| `docker compose down`           | Container stoppen und entfernen |
-| `docker compose logs -f`        | Logs anzeigen                   |
-| `docker compose ps`             | Status der Container anzeigen   |
-| `docker compose restart`        | Container neustarten            |
-| `docker exec -it ssc-webapp bash` | Shell im SSC Container        |
-| `docker exec -it ssc-mysql bash`  | Shell im MySQL Container      |
+| Befehl                            | Beschreibung                    |
+|-----------------------------------|---------------------------------|
+| `docker compose up -d`            | Container starten               |
+| `docker compose down`             | Container stoppen und entfernen |
+| `docker compose logs -f`          | Logs anzeigen                   |
+| `docker compose ps`               | Status anzeigen                 |
+| `docker compose restart`          | Neustarten                      |
+| `docker exec -it ssc-webapp bash` | Shell im SSC-Container          |
+| `docker exec -it ssc-mysql bash`  | Shell im MySQL-Container        |
 
 ## Dateistruktur
 
 ```
-fortify-ssc-docker-setup/
-├── docker-compose.yml              # Container-Konfiguration (SSC + MySQL)
-├── .env.example                    # Umgebungsvariablen-Vorlage
-├── setup.sh                        # Automatisches Setup-Script
+├── docker-compose.yml              # SSC + MySQL
+├── .env.example                    # Umgebungsvariablen
+├── setup.sh                        # Automatisches Setup
 ├── ssc-webapp/
-│   ├── secrets/                    # Zertifikate, Lizenzen, Konfiguration
-│   │   ├── ssc.autoconfig.example  # Datenbank-Konfigurationsvorlage
-│   │   ├── fortify.license         # (von dir bereitgestellt)
-│   │   ├── ssc-keystore.pfx        # (wird generiert)
-│   │   └── keystore_password       # (wird generiert)
-│   └── data/                       # SSC-Anwendungsdaten (persistent)
+│   ├── secrets/                    # Zertifikate, Lizenz, Konfiguration
+│   │   └── ssc.autoconfig.example
+│   └── data/                       # Persistente SSC-Daten
 └── ssc-mysql/
     ├── config/
     │   └── config-file.cnf         # MySQL-Konfiguration
-    └── data/                       # MySQL-Datenbankdaten (persistent)
+    └── data/                       # Persistente DB-Daten
 ```
 
 ## Systemanforderungen
 
-| Komponente | Minimum       | Empfohlen     |
-|------------|---------------|---------------|
-| RAM        | 8 GB          | 16 GB         |
-| CPU        | 4 Kerne       | 8 Kerne       |
-| Festplatte | 10 GB frei    | 20 GB frei    |
+| Komponente | Minimum  | Empfohlen |
+|------------|----------|-----------|
+| RAM        | 8 GB     | 16 GB     |
+| CPU        | 4 Kerne  | 8 Kerne   |
+| Festplatte | 10 GB    | 20 GB     |
 
 ## Fehlerbehebung
 
-### SSC startet nicht / bleibt hängen
+**SSC startet nicht:** Prüfe ob MySQL bereit ist – `docker compose logs ssc-mysql | tail -20`
 
-```bash
-# Prüfe ob MySQL bereit ist
-docker compose logs ssc-mysql | tail -20
+**Image-Pull schlägt fehl:** `docker login` ausführen und sicherstellen, dass Zugang zu `fortifydocker` besteht.
 
-# Prüfe SSC Logs
-docker compose logs ssc-webapp | tail -50
-```
-
-### "Access Denied" beim Image-Pull
-
-Stelle sicher, dass du bei Docker Hub angemeldet bist (`docker login`) und Zugang zum `fortifydocker`-Repository hast.
-
-### Datenbank-Verbindungsfehler
-
-Prüfe ob der MySQL-Container läuft und gesund ist:
-
-```bash
-docker compose ps
-```
-
-Falls MySQL nicht startet, lösche das Datenverzeichnis und starte neu:
-
-```bash
-docker compose down
-rm -rf ssc-mysql/data
-docker compose up -d
-```
-
-### Alles zurücksetzen
+**Alles zurücksetzen:**
 
 ```bash
 docker compose down
 rm -rf ssc-mysql/data ssc-webapp/data
-# Anschließend: ./setup.sh oder manuell neu starten
 ```
 
 ## Weiterführende Dokumentation
 
 - [SSC 25.4 Benutzerhandbuch](https://www.microfocus.com/documentation/fortify-software-security-center/2540/ssc-ugd-html-25.4.0/index.html)
-- [SSC Kubernetes Deployment Guide](https://www.microfocus.com/documentation/fortify-software-security-center/2540/Deploying_SSC_in_Kubernetes_25.4.0.html)
+- [SSC Kubernetes Deployment](https://www.microfocus.com/documentation/fortify-software-security-center/2540/Deploying_SSC_in_Kubernetes_25.4.0.html)
 
 ---
 
-> **Disclaimer:** Dieses Setup wird auf Community-Basis bereitgestellt und ist nicht offiziell von OpenText unterstützt.
-> Für produktive Umgebungen empfehlen wir die offizielle Kubernetes-basierte Deployment-Methode.
+> **Disclaimer:** Community-basiertes Setup, nicht offiziell von OpenText unterstützt.

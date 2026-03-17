@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Fortify SSC Docker Setup - Interaktives Setup-Script
+# Fortify SSC Docker Setup
 # =============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SECRETS_DIR="${SCRIPT_DIR}/ssc-webapp/secrets"
-DATA_DIR_SSC="${SCRIPT_DIR}/ssc-webapp/data"
-DATA_DIR_MYSQL="${SCRIPT_DIR}/ssc-mysql/data"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -27,158 +25,163 @@ echo "=============================================="
 echo ""
 
 # -------------------------------------------------------
-# 1. Voraussetzungen prüfen
+# 1. Check prerequisites
 # -------------------------------------------------------
-info "Prüfe Voraussetzungen..."
+info "Checking prerequisites..."
 
 if ! command -v docker &>/dev/null; then
-    error "Docker ist nicht installiert. Bitte installiere Docker Desktop: https://docs.docker.com/get-docker/"
+    error "Docker is not installed. Please install Docker Desktop: https://docs.docker.com/get-docker/"
     exit 1
 fi
-ok "Docker gefunden: $(docker --version)"
+ok "Docker found: $(docker --version)"
 
 if ! docker compose version &>/dev/null 2>&1; then
-    error "Docker Compose ist nicht verfügbar. Bitte stelle sicher, dass Docker Desktop aktuell ist."
+    error "Docker Compose is not available. Please make sure Docker Desktop is up to date."
     exit 1
 fi
-ok "Docker Compose gefunden: $(docker compose version --short)"
+ok "Docker Compose found: $(docker compose version --short)"
 
 if ! command -v keytool &>/dev/null; then
-    error "keytool nicht gefunden. Bitte installiere ein JDK (z.B. OpenJDK 17)."
+    error "keytool not found. Please install a JDK (e.g. OpenJDK 17)."
     exit 1
 fi
-ok "keytool gefunden"
+ok "keytool found"
 
 # -------------------------------------------------------
-# 2. .env erstellen
+# 2. Create .env
 # -------------------------------------------------------
 if [ ! -f "${SCRIPT_DIR}/.env" ]; then
-    info "Erstelle .env aus .env.example..."
+    info "Creating .env from .env.example..."
     cp "${SCRIPT_DIR}/.env.example" "${SCRIPT_DIR}/.env"
-    ok ".env erstellt"
+    ok ".env created"
 else
-    ok ".env existiert bereits"
+    ok ".env already exists"
 fi
 
+source "${SCRIPT_DIR}/.env"
+
 # -------------------------------------------------------
-# 3. Lizenz prüfen
+# 3. Check license file
 # -------------------------------------------------------
 echo ""
 if [ ! -f "${SECRETS_DIR}/fortify.license" ]; then
-    warn "Keine Lizenz-Datei gefunden!"
+    warn "No license file found!"
     echo ""
-    echo "  Bitte kopiere deine Fortify-Lizenz nach:"
+    echo "  Please copy your Fortify license to:"
     echo "  ${SECRETS_DIR}/fortify.license"
     echo ""
-    read -rp "  Drücke ENTER wenn die Datei bereitliegt..."
+    read -rp "  Press ENTER when the file is in place..."
 
     if [ ! -f "${SECRETS_DIR}/fortify.license" ]; then
-        error "fortify.license nicht gefunden. Abbruch."
+        error "fortify.license not found. Aborting."
         exit 1
     fi
 fi
-ok "Lizenz-Datei vorhanden"
+ok "License file found"
 
 # -------------------------------------------------------
-# 4. SSL-Zertifikat generieren
+# 4. Generate SSL certificate
 # -------------------------------------------------------
 echo ""
 if [ ! -f "${SECRETS_DIR}/ssc-keystore.pfx" ]; then
-    info "Generiere selbstsigniertes SSL-Zertifikat..."
+    info "Generating self-signed SSL certificate..."
 
-    # Zufälliges Keystore-Passwort erzeugen
-    KEYSTORE_PW=$(openssl rand -base64 16)
+    KEYSTORE_PW="$(openssl rand -base64 32)"
     echo -n "${KEYSTORE_PW}" > "${SECRETS_DIR}/keystore_password"
 
-    keytool -genkeypair \
-        -alias ssc \
-        -keyalg RSA \
-        -keysize 2048 \
-        -validity 365 \
+    keytool -genkeypair -keyalg RSA -keysize 2048 \
         -storetype PKCS12 \
         -keystore "${SECRETS_DIR}/ssc-keystore.pfx" \
+        -alias ssc-server \
+        -validity 365 \
         -storepass "${KEYSTORE_PW}" \
         -keypass "${KEYSTORE_PW}" \
-        -dname "CN=localhost, OU=Fortify, O=Demo, L=Berlin, ST=Berlin, C=DE" \
+        -dname "CN=localhost, OU=Fortify, O=Demo, C=DE" \
         -ext "SAN=dns:localhost,ip:127.0.0.1" \
         2>/dev/null
 
-    ok "SSL-Zertifikat erstellt (gültig für 365 Tage)"
+    ok "SSL certificate created (valid for 365 days)"
 else
-    ok "SSL-Zertifikat existiert bereits"
+    ok "SSL certificate already exists"
 fi
 
 # -------------------------------------------------------
-# 5. SSC Autoconfig erstellen
+# 5. Create SSC autoconfig
 # -------------------------------------------------------
 if [ ! -f "${SECRETS_DIR}/ssc.autoconfig" ]; then
-    info "Erstelle SSC Autoconfig (MySQL)..."
+    info "Creating SSC autoconfig (MySQL)..."
     cp "${SECRETS_DIR}/ssc.autoconfig.example" "${SECRETS_DIR}/ssc.autoconfig"
 
-    # host.url anpassen
-    source "${SCRIPT_DIR}/.env"
     PORT="${SSC_HTTPS_PORT:-8443}"
     sed -i.bak "s|host.url: .*|host.url: 'https://localhost:${PORT}'|" "${SECRETS_DIR}/ssc.autoconfig"
     rm -f "${SECRETS_DIR}/ssc.autoconfig.bak"
 
-    ok "Autoconfig erstellt"
+    ok "Autoconfig created"
 else
-    ok "Autoconfig existiert bereits"
+    ok "Autoconfig already exists"
 fi
 
 # -------------------------------------------------------
-# 6. Daten-Verzeichnisse erstellen
+# 6. Create data directories and set permissions
 # -------------------------------------------------------
-mkdir -p "${DATA_DIR_SSC}" "${DATA_DIR_MYSQL}"
-ok "Daten-Verzeichnisse erstellt"
+mkdir -p "${SCRIPT_DIR}/ssc-webapp/data" "${SCRIPT_DIR}/ssc-mysql/data"
+
+# SSC container runs as UID 1111
+if [[ "$(uname)" == "Linux" ]]; then
+    info "Setting volume permissions (UID 1111)..."
+    chown -R 1111 "${SCRIPT_DIR}/ssc-webapp/data" "${SCRIPT_DIR}/ssc-webapp/secrets" 2>/dev/null || \
+        warn "Could not set permissions. You may need to run: sudo chown -R 1111 ssc-webapp/data ssc-webapp/secrets"
+fi
+ok "Data directories ready"
 
 # -------------------------------------------------------
-# 7. Docker Hub Login prüfen
+# 7. Check Docker Hub access
 # -------------------------------------------------------
 echo ""
-info "Prüfe Docker Hub Zugang..."
+info "Checking Docker Hub access..."
 if docker pull --quiet "${SSC_IMAGE:-fortifydocker/ssc-webapp:25.4.0.0137}" &>/dev/null 2>&1; then
-    ok "SSC Image verfügbar"
+    ok "SSC image available"
 else
-    warn "SSC Image konnte nicht gepullt werden."
+    warn "Could not pull SSC image."
     echo ""
-    echo "  Das SSC Image ist nicht öffentlich verfügbar."
-    echo "  Stelle sicher, dass du bei Docker Hub angemeldet bist"
-    echo "  und Zugang zum fortifydocker-Repository hast."
+    echo "  The SSC image is not publicly available."
+    echo "  Make sure you are logged in to Docker Hub and have"
+    echo "  access to the fortifydocker repository."
     echo ""
-    echo "  Führe aus: docker login"
+    echo "  Run: docker login"
     echo ""
-    read -rp "  Drücke ENTER um fortzufahren (oder Ctrl+C zum Abbrechen)..."
+    read -rp "  Press ENTER to continue (or Ctrl+C to abort)..."
 fi
 
 # -------------------------------------------------------
-# 8. Container starten
+# 8. Start containers
 # -------------------------------------------------------
 echo ""
-read -rp "Sollen die Container jetzt gestartet werden? (j/N) " START
-if [[ "${START}" =~ ^[jJyY]$ ]]; then
-    info "Starte Container..."
+read -rp "Start containers now? (y/N) " START
+if [[ "${START}" =~ ^[yYjJ]$ ]]; then
+    info "Starting containers..."
     cd "${SCRIPT_DIR}"
     docker compose up -d
 
     echo ""
-    ok "Container gestartet!"
+    ok "Containers started!"
     echo ""
-    echo "  SSC ist erreichbar unter:  https://localhost:${SSC_HTTPS_PORT:-8443}"
-    echo "  (Der erste Start kann 2-5 Minuten dauern)"
+    echo "  SSC URL:    https://localhost:${SSC_HTTPS_PORT:-8443}"
+    echo "  Login:      admin / admin (must be changed on first login)"
+    echo "  First startup may take 2-5 minutes."
     echo ""
-    echo "  Standard-Login:  admin / admin"
-    echo "  (Muss beim ersten Login geändert werden)"
+    echo "  View logs:  docker compose logs -f"
+    echo "  Stop:       docker compose down"
     echo ""
-    echo "  Logs anzeigen:   docker compose logs -f"
-    echo "  Stoppen:         docker compose down"
+    echo "  IMPORTANT: After SSC is up, extract the secret key:"
+    echo "    docker cp ssc-webapp:/fortify/ssc/conf/secret.key ssc-webapp/secrets/secret.key"
+    echo "  Then uncomment COM_FORTIFY_SSC_SECRETKEY in .env"
     echo ""
 else
     echo ""
-    ok "Setup abgeschlossen!"
+    ok "Setup complete!"
     echo ""
-    echo "  Starte die Container später mit:"
-    echo "    cd ${SCRIPT_DIR}"
-    echo "    docker compose up -d"
+    echo "  Start containers with:"
+    echo "    cd ${SCRIPT_DIR} && docker compose up -d"
     echo ""
 fi

@@ -46,6 +46,7 @@ services:
       HTTP_SERVER_CERTIFICATE_VERIFICATION: "none"
       COM_FORTIFY_SSC_LICENSEPATH: /app/secrets/fortify.license
       COM_FORTIFY_SSC_AUTOCONFIGPATH: /app/secrets/ssc.autoconfig
+      COM_FORTIFY_SSC_SECRETKEY: ${COM_FORTIFY_SSC_SECRETKEY:-}
     depends_on:
       ssc-mysql:
         condition: service_healthy
