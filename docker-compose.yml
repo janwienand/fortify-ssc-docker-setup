@@ -47,6 +47,8 @@ services:
       COM_FORTIFY_SSC_LICENSEPATH: /app/secrets/fortify.license
       COM_FORTIFY_SSC_AUTOCONFIGPATH: /app/secrets/ssc.autoconfig
       COM_FORTIFY_SSC_SECRETKEY: ${COM_FORTIFY_SSC_SECRETKEY:-}
+      JVM_TRUSTSTORE_FILE: /app/secrets/truststore.jks
+      JVM_TRUSTSTORE_PASSWORD_FILE: /app/secrets/truststore_password
     depends_on:
       ssc-mysql:
         condition: service_healthy
